@@ -107,6 +107,8 @@ class RoIRotate(object):
 			def body(pad_rois, i):
 				_affine_feature_map = trans_feature_map[i]
 				width_box = box_widths[i]
+				_affine_feature_map_width = _affine_feature_map.shape[2]
+				width_box = tf.convert_to_tensor([width_box, _affine_feature_map_width])[tf.argmin([width_box, _affine_feature_map_width],0, output_type=tf.int32)]
 				# _affine_feature_map = tf.expand_dims(_affine_feature_map, 0)
 				# roi = tf.image.crop_and_resize(after_transform, [[0, 0, 8/map_shape[0], width_box/map_shape[1]]], [0], [8, tf.cast(width_box, tf.int32)])
 				roi = tf.image.crop_to_bounding_box(_affine_feature_map, 0, 0, 8, width_box)

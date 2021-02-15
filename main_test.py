@@ -8,9 +8,10 @@ import tensorflow as tf
 import locality_aware_nms as nms_locality
 import lanms
 from bktree import BKTree, levenshtein, list_words
+from tqdm import tqdm
 
-tf.app.flags.DEFINE_string('test_data_path', '/home/qz/data/ICDAR15/ch4_test_images/', '')
-tf.app.flags.DEFINE_string('gpu_list', '0', '')
+tf.app.flags.DEFINE_string('test_data_path', 'image_test/', '')
+tf.app.flags.DEFINE_string('gpu_list', '1', '')
 tf.app.flags.DEFINE_string('checkpoint_path', 'checkpoints/', '')
 tf.app.flags.DEFINE_string('output_dir', 'outputs/', '')
 tf.app.flags.DEFINE_bool('no_write_images', True, 'do not write images')
@@ -211,7 +212,7 @@ def main(argv=None):
             saver.restore(sess, model_path)
 
             im_fn_list = get_images()
-            for im_fn in im_fn_list:
+            for im_fn in tqdm(im_fn_list):
                 im = cv2.imread(im_fn)[:, :, ::-1]
                 start_time = time.time()
                 im_resized, (ratio_h, ratio_w) = resize_image(im)
@@ -224,8 +225,9 @@ def main(argv=None):
                 boxes, timer = detect(score_map=score, geo_map=geometry, timer=timer)
                 timer['detect'] = time.time() - start
                 start = time.time() # reset for recognition
+                print(os.path.basename(im_fn) + ' begin')
                 if boxes is not None and boxes.shape[0] != 0:
-                    res_file_path = os.path.join(FLAGS.output_dir, 'res_' + '{}.txt'.format(os.path.basename(im_fn).split('.')[0]))
+                    res_file_path = os.path.join(FLAGS.output_dir, '{}.txt'.format(os.path.basename(im_fn)[:-4]))
 
                     input_roi_boxes = boxes[:, :8].reshape(-1, 8)
                     recog_decode_list = []
@@ -238,7 +240,8 @@ def main(argv=None):
                         boxes_masks = [0] * tmp_roi_boxes.shape[0]
                         transform_matrixes, box_widths = get_project_matrix_and_width(tmp_roi_boxes)
                         # max_box_widths = max_width * np.ones(boxes_masks.shape[0]) # seq_len
-                    
+                        if transform_matrixes.shape[0] == 0:
+                            continue
                         # Run end to end
                         recog_decode = sess.run(dense_decode, feed_dict={input_feature_map: shared_feature_map, input_transform_matrix: transform_matrixes, input_box_mask[0]: boxes_masks, input_box_widths: box_widths})
                         recog_decode_list.extend([r for r in recog_decode])
@@ -271,17 +274,17 @@ def main(argv=None):
                             ))
                             
                             # Draw bounding box
-                            cv2.polylines(im[:, :, ::-1], [box.astype(np.int32).reshape((-1, 1, 2))], True, color=(255, 255, 0), thickness=1)
+                            # cv2.polylines(im[:, :, ::-1], [box.astype(np.int32).reshape((-1, 1, 2))], True, color=(255, 255, 0), thickness=1)
                             # Draw recognition results area
-                            text_area = box.copy()
-                            text_area[2, 1] = text_area[1, 1]
-                            text_area[3, 1] = text_area[0, 1]
-                            text_area[0, 1] = text_area[0, 1] - 15
-                            text_area[1, 1] = text_area[1, 1] - 15
-                            cv2.fillPoly(im[:, :, ::-1], [text_area.astype(np.int32).reshape((-1, 1, 2))], color=(255, 255, 0))
-                            im_txt = cv2.putText(im[:, :, ::-1], recognition_result, (box[0, 0], box[0, 1]), font, 0.5, (0, 0, 255), 1)
+                            # text_area = box.copy()
+                            # text_area[2, 1] = text_area[1, 1]
+                            # text_area[3, 1] = text_area[0, 1]
+                            # text_area[0, 1] = text_area[0, 1] - 15
+                            # text_area[1, 1] = text_area[1, 1] - 15
+                            # cv2.fillPoly(im[:, :, ::-1], [text_area.astype(np.int32).reshape((-1, 1, 2))], color=(255, 255, 0))
+                            # im_txt = cv2.putText(im[:, :, ::-1], recognition_result, (box[0, 0], box[0, 1]), font, 0.5, (0, 0, 255), 1)
                 else:
-                    res_file = os.path.join(FLAGS.output_dir, 'res_' + '{}.txt'.format(os.path.basename(im_fn).split('.')[0]))
+                    res_file = os.path.join(FLAGS.output_dir, '{}.txt'.format(os.path.basename(im_fn)[:-4]))
                     f = open(res_file, "w")
                     im_txt = None
                     f.close()
@@ -291,6 +294,7 @@ def main(argv=None):
 
                 duration = time.time() - start_time
                 print('[timing] {}'.format(duration))
+                os.remove(im_fn)
 
                 if not FLAGS.no_write_images:
                     img_path = os.path.join(FLAGS.output_dir, os.path.basename(im_fn))
